@@ -1,0 +1,184 @@
+module QueueElm exposing (queueView)
+
+import Browser
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
+import Svg exposing (..)
+import Svg.Attributes as SvgAttr
+import Time
+
+
+type alias Model =
+    { queue : List QueueElement
+    , inputVal : String
+    , nextId : Int
+    , highlightFront : Bool
+    , highlightBack : Bool
+    }
+-- x -> coord
+-- targetX -> destiny coord
+
+type alias QueueElement =
+    { id : Int
+    , value : String
+    , x : Float  
+    , targetX : Float  
+    }
+
+init : () -> (Model, Cmd Msg)
+init _ =
+    ( { queue = []
+      , inputVal = ""
+      , nextId = 0
+      , highlightFront = False
+      , highlightBack = False
+      }
+    , Cmd.none
+    )
+
+type Msg
+    = Enqueue
+    | Dequeue
+    | UpdateInput String
+    | Tick Time.Posix
+    | HighlightFront
+    | HighlightBack
+update : Msg -> Model -> (Model, Cmd Msg)
+update msg model =
+    case msg of
+        Enqueue ->
+            if String.isEmpty model.inputVal then
+                (model, Cmd.none)
+            else
+                let
+                    newElem =
+                        { id = model.nextId
+                        , value = model.inputVal
+                        --Just referential coord to begin in
+                        , x = -100  
+                        --Goes at the end of queue
+                        , targetX = getTargetX (List.length model.queue) 
+                        }
+                    newQueue =
+                        model.queue ++ [newElem]
+                in
+                ( { model 
+                  | queue = List.indexedMap (\index e -> { e | targetX = getTargetX index }) newQueue
+                  , inputVal = ""
+                  , nextId = model.nextId + 1
+                  }
+                , Cmd.none
+                )
+
+        Dequeue ->
+            case model.queue of
+                [] -> 
+                    (model, Cmd.none)
+                _ :: rest ->
+                    let
+                        newQueue =
+                            List.indexedMap (\index e -> { e | targetX = getTargetX index }) rest
+                    in
+                    ( { model 
+                      | queue = newQueue
+                      }
+                    , Cmd.none
+                    )
+
+        UpdateInput newValue ->
+            ( { model | inputVal = newValue }, Cmd.none )
+
+        Tick _ ->
+            ( { model | queue = List.map updateElementPosition model.queue }, Cmd.none )
+        HighlightFront ->
+            ( { model | highlightFront = not model.highlightFront, highlightBack = False }, Cmd.none )
+
+        HighlightBack ->
+            ( { model | highlightBack = not model.highlightBack, highlightFront = False }, Cmd.none )
+
+
+--Adjust here for space between elements
+getTargetX : Int -> Float
+getTargetX index =
+    50 + (toFloat index * 110)  
+
+
+
+updateElementPosition : QueueElement -> QueueElement
+updateElementPosition elem =
+    let --speed of animation
+        step = 5
+        newX = 
+            if abs (elem.x - elem.targetX) < step then
+                elem.targetX
+            else if elem.x < elem.targetX then
+                elem.x + step
+            else
+                elem.x - step
+    in
+    { elem | x = newX }
+
+
+queueView : Model -> Html Msg
+queueView model =
+    div []
+        [ div []
+            [ input [ type_ "text", placeholder "Agregar elemento", value model.inputVal, onInput UpdateInput ] []
+            , button [ onClick Enqueue ] [ Html.text "Enqueue" ]
+            , button [ onClick Dequeue ] [ Html.text "Dequeue" ]
+            , button [ onClick HighlightFront ] [ Html.text "Front" ]
+            , button [ onClick HighlightBack ] [ Html.text "Back" ]
+            ]
+        , svg
+            [ SvgAttr.width "1500"
+            , SvgAttr.height "200"
+            , SvgAttr.viewBox "0 0 1500 200"
+            ]
+            (List.indexedMap (drawQueueElement model) model.queue)
+        ]
+        
+        
+drawQueueElement : Model -> Int -> QueueElement -> Svg Msg
+drawQueueElement model index elem =
+    let
+        squareSize = 60.0
+        halfSquareSize = squareSize / 2.0
+        textX = elem.x + halfSquareSize
+        textY = "85" -- can't really scale this, so has to be manually inputted
+        isFront = index == 0
+        isBack = index == List.length model.queue - 1
+        fillColor = 
+            if (isFront && model.highlightFront) || (isBack && model.highlightBack) then
+                "red"
+            else
+                "green"
+    in
+    g []
+        [ rect
+            [ SvgAttr.x (String.fromFloat elem.x)
+            , SvgAttr.y "50"
+            , SvgAttr.width (String.fromFloat squareSize)
+            , SvgAttr.height (String.fromFloat squareSize)
+            , SvgAttr.fill fillColor
+            ]
+            []
+        , text_
+            [ SvgAttr.x (String.fromFloat textX)
+            , SvgAttr.y textY
+            , SvgAttr.textAnchor "middle"
+            , SvgAttr.fill "white"
+            ]
+            [ Svg.text elem.value ]
+        ]
+
+--Main program
+main : Program () Model Msg
+main =
+    Browser.element
+        { init = init
+        , update = update
+        , view = queueView -- Aquí se llama a la función queueView
+        , subscriptions = \_ -> Time.every 16 Tick
+        }
+

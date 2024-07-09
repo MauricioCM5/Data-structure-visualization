@@ -1,0 +1,198 @@
+module linkedList exposing (..)
+
+import Browser
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
+import Svg exposing (..)
+import Svg.Attributes as SvgAttr
+import Time
+
+-- MODELO
+type alias Model =
+    { linkedList : List LinkedListNode
+    , inputValue : String
+    , searchValue : String  -- Nuevo campo para el valor de búsqueda
+    , nextId : Int
+    }
+
+type alias LinkedListNode =
+    { id : Int
+    , value : String
+    , x : Float  -- Posición X actual
+    , targetX : Float  -- Posición X objetivo
+    }
+
+init : () -> (Model, Cmd Msg)
+init _ =
+    ( { linkedList = []
+      , inputValue = ""
+      , searchValue = ""  -- Inicializamos el valor de búsqueda como vacío
+      , nextId = 0
+      }
+    , Cmd.none
+    )
+
+-- ACTUALIZACIÓN
+type Msg
+    = AddNode
+    | RemoveNode
+    | UpdateInput String
+    | UpdateSearch String  -- Nuevo mensaje para actualizar el valor de búsqueda
+    | RemoveByValue  -- Nuevo mensaje para eliminar por valor
+    | Tick Time.Posix
+
+update : Msg -> Model -> (Model, Cmd Msg)
+update msg model =
+    case msg of
+        AddNode ->
+            if String.isEmpty model.inputValue then
+                (model, Cmd.none)
+            else
+                let
+                    newNode =
+                        { id = model.nextId
+                        , value = model.inputValue
+                        , x = -100  -- Empieza fuera de la pantalla
+                        , targetX = getTargetX (List.length model.linkedList)  -- Va al final de la lista enlazada
+                        }
+                    -- Insertar nuevo nodo en la lista enlazada y actualizar posiciones objetivo
+                    newList =
+                        model.linkedList ++ [newNode]
+                in
+                ( { model 
+                  | linkedList = List.indexedMap (\index e -> { e | targetX = getTargetX index }) newList
+                  , inputValue = ""
+                  , nextId = model.nextId + 1
+                  }
+                , Cmd.none
+                )
+
+        RemoveNode ->
+            case model.linkedList of
+                [] -> 
+                    (model, Cmd.none)
+                _ :: rest ->
+                    let
+                        newList =
+                            List.indexedMap (\index e -> { e | targetX = getTargetX index }) rest
+                    in
+                    ( { model 
+                      | linkedList = newList
+                      }
+                    , Cmd.none
+                    )
+
+        UpdateInput newValue ->
+            ( { model | inputValue = newValue }, Cmd.none )
+
+        UpdateSearch newSearchValue ->
+            ( { model | searchValue = newSearchValue }, Cmd.none )
+
+        RemoveByValue ->
+            let
+                newList = List.filter (\node -> node.value /= model.searchValue) model.linkedList
+            in
+            ( { model 
+              | linkedList = List.indexedMap (\index e -> { e | targetX = getTargetX index }) newList
+              }
+            , Cmd.none
+            )
+
+        Tick _ ->
+            ( { model | linkedList = List.map updateNodePosition model.linkedList }, Cmd.none )
+
+-- Función para calcular la posición objetivo horizontal
+getTargetX : Int -> Float
+getTargetX index =
+    50 + (toFloat index * 150)  -- Ajusta el espacio entre nodos
+
+updateNodePosition : LinkedListNode -> LinkedListNode
+updateNodePosition node =
+    let
+        step = 5
+        newX = 
+            if abs (node.x - node.targetX) < step then
+                node.targetX
+            else if node.x < node.targetX then
+                node.x + step
+            else
+                node.x - step
+    in
+    { node | x = newX }
+
+-- VISTA
+view : Model -> Html Msg
+view model =
+    div []
+        [ div []
+            [ input [ type_ "text", placeholder "Valor del nodo", value model.inputValue, onInput UpdateInput ] []
+            , button [ onClick AddNode ] [ Html.text "Agregar Nodo" ]
+            ]
+        , div []
+            [ input [ type_ "text", placeholder "Valor del nodo a eliminar", value model.searchValue, onInput UpdateSearch ] []
+            , button [ onClick RemoveByValue ] [ Html.text "Eliminar Nodo por Valor" ]
+            ]
+        , svg
+            [ SvgAttr.width "2000"
+            , SvgAttr.height "300"
+            , SvgAttr.viewBox "0 0 2000 300"
+            ]
+            (List.concatMap drawLinkedListNode model.linkedList)
+        ]
+
+drawLinkedListNode : LinkedListNode -> List (Svg Msg)
+drawLinkedListNode node =
+    let
+        rectX = node.x
+        rectY = 100
+        rectWidth = 100
+        rectHeight = 100
+        arrowX1 = node.x + rectWidth
+        arrowY1 = rectY + rectHeight / 2
+        arrowX2 = arrowX1 + 50
+    in
+    [ rect
+        [ SvgAttr.x (String.fromFloat rectX)
+        , SvgAttr.y (String.fromFloat rectY)
+        , SvgAttr.width (String.fromFloat rectWidth)
+        , SvgAttr.height (String.fromFloat rectHeight)
+        , SvgAttr.fill "blue"
+        ]
+        []
+    , text_
+        [ SvgAttr.x (String.fromFloat (rectX + rectWidth / 2))
+        , SvgAttr.y (String.fromFloat (rectY + rectHeight / 2))
+        , SvgAttr.textAnchor "middle"
+        , SvgAttr.fill "white"
+        , SvgAttr.dominantBaseline "middle"
+        ]
+        [ Svg.text node.value ]
+    , line
+        [ SvgAttr.x1 (String.fromFloat arrowX1)
+        , SvgAttr.y1 (String.fromFloat arrowY1)
+        , SvgAttr.x2 (String.fromFloat arrowX2)
+        , SvgAttr.y2 (String.fromFloat arrowY1)
+        , SvgAttr.stroke "black"
+        , SvgAttr.strokeWidth "2"
+        ]
+        []
+    , polygon
+        [ SvgAttr.points (String.join "," [ String.fromFloat arrowX2 ++ " " ++ String.fromFloat (arrowY1 - 5)
+                                          , String.fromFloat (arrowX2 + 10) ++ " " ++ String.fromFloat arrowY1
+                                          , String.fromFloat arrowX2 ++ " " ++ String.fromFloat (arrowY1 + 5)
+                                          ])
+        , SvgAttr.fill "black"
+        ]
+        []
+    ]
+
+-- PROGRAMA PRINCIPAL
+main : Program () Model Msg
+main =
+    Browser.element
+        { init = init
+        , update = update
+        , view = view
+        , subscriptions = \_ -> Time.every 16 Tick
+        }

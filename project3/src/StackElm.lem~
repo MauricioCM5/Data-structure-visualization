@@ -1,0 +1,152 @@
+module StackElm exposing (stackView)
+
+import Browser
+import Html exposing (..)
+import Html.Attributes exposing (..)
+import Html.Events exposing (..)
+import Svg exposing (..)
+import Svg.Attributes as SvgAttr
+import Time
+
+-- MODELO
+type alias Model =
+    { stack : List StackElement
+    , inputValue : String
+    , nextId : Int
+    }
+
+type alias StackElement =
+    { id : Int
+    , value : String
+    , y : Float
+    , targetY : Float
+    }
+
+init : () -> (Model, Cmd Msg)
+init _ =
+    ( { stack = []
+      , inputValue = ""
+      , nextId = 0
+      }
+    , Cmd.none
+    )
+
+-- ACTUALIZACIÓN
+type Msg
+    = Push
+    | Pop
+    | UpdateInput String
+    | Tick Time.Posix
+
+update : Msg -> Model -> (Model, Cmd Msg)
+update msg model =
+    case msg of
+        Push ->
+            if String.isEmpty model.inputValue then
+                (model, Cmd.none)
+            else
+                let
+                    newElement =
+                        { id = model.nextId
+                        , value = model.inputValue
+                        , y = 500  -- Empieza fuera de la pantalla
+                        , targetY = getTargetY 0  -- Nuevo elemento va a la parte superior
+                        }
+                    -- Insertar nuevo elemento y actualizar posiciones objetivo
+                    newStack =
+                        List.indexedMap (\index e -> { e | targetY = getTargetY (index + 1) }) (newElement :: model.stack)
+                in
+                ( { model 
+                  | stack = newStack
+                  , inputValue = ""
+                  , nextId = model.nextId + 1
+                  }
+                , Cmd.none
+                )
+
+        Pop ->
+            case model.stack of
+                [] -> 
+                    (model, Cmd.none)
+                _ :: rest ->
+                    let
+                        newStack =
+                            List.indexedMap (\index e -> { e | targetY = getTargetY index }) rest
+                    in
+                    ( { model 
+                      | stack = newStack
+                      }
+                    , Cmd.none
+                    )
+
+        UpdateInput newValue ->
+            ( { model | inputValue = newValue }, Cmd.none )
+
+        Tick _ ->
+            ( { model | stack = List.map updateElementPosition model.stack }, Cmd.none )
+
+-- Función para calcular la posición objetivo en el sentido inverso
+getTargetY : Int -> Float
+getTargetY index =
+    50 + (toFloat index * 60)
+
+updateElementPosition : StackElement -> StackElement
+updateElementPosition element =
+    let
+        step = 5
+        newY = 
+            if abs (element.y - element.targetY) < step then
+                element.targetY
+            else if element.y < element.targetY then
+                element.y + step
+            else
+                element.y - step
+    in
+    { element | y = newY }
+
+-- VISTA
+stackView : Model -> Html Msg
+stackView model =
+    div []
+        [ div []
+            [ input [ type_ "text", placeholder "Valor a pushear", value model.inputValue, onInput UpdateInput ] []
+            , button [ onClick Push ] [ Html.text "Push" ]
+            , button [ onClick Pop ] [ Html.text "Pop" ]
+            ]
+        , svg
+            [ SvgAttr.width "300"
+            , SvgAttr.height "500"
+            , SvgAttr.viewBox "0 0 300 500"
+            ]
+            (List.map drawStackElement model.stack)
+        ]
+
+drawStackElement : StackElement -> Svg Msg
+drawStackElement element =
+    g []
+        [ rect
+            [ SvgAttr.x "50"
+            , SvgAttr.y (String.fromFloat element.y)
+            , SvgAttr.width "200"
+            , SvgAttr.height "50"
+            , SvgAttr.fill "blue"
+            ]
+            []
+        , text_
+            [ SvgAttr.x "150"
+            , SvgAttr.y (String.fromFloat (element.y + 30))
+            , SvgAttr.textAnchor "middle"
+            , SvgAttr.fill "white"
+            ]
+            [ Svg.text element.value ]
+        ]
+
+-- PROGRAMA PRINCIPAL
+main : Program () Model Msg
+main =
+    Browser.element
+        { init = init
+        , update = update
+        , view = stackView
+        , subscriptions = \_ -> Time.every 16 Tick
+        }

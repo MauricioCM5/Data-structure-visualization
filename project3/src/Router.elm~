@@ -1,0 +1,65 @@
+module Router exposing (Route, init, update, view)
+
+import Browser.Navigation as Nav
+import Url exposing (Url)
+import Html exposing (Html)
+import StackElm exposing (stackView)
+import QueueElm exposing (queueView)
+
+type Route
+    = StackPage
+    | QueuePage
+    | NotFound
+
+type alias Model =
+    { route : Route
+    , navKey : Nav.Key
+    }
+
+type Msg
+    = UrlChanged Url
+    | NavigateTo Route
+
+init : Nav.Key -> Url -> ( Model, Cmd Msg )
+init navKey url =
+    ( { route = parseUrl url
+      , navKey = navKey
+      }
+    , Cmd.none
+    )
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        UrlChanged url ->
+            ( { model | route = parseUrl url }, Cmd.none )
+
+        NavigateTo route ->
+            ( { model | route = route }, Nav.pushUrl model.navKey (routeToString route) )
+
+view : Model -> Html Msg
+view model =
+    case model.route of
+        StackPage ->
+            stackView
+
+        QueuePage ->
+            queueView
+
+        NotFound ->
+            Html.div [] [ Html.text "404 - Page Not Found" ]
+
+parseUrl : Url -> Route
+parseUrl url =
+    case url.path of
+        "/" -> StackPage
+        "/queue" -> QueuePage
+        _ -> NotFound
+
+routeToString : Route -> String
+routeToString route =
+    case route of
+        StackPage -> "/"
+        QueuePage -> "/queue"
+        NotFound -> "/"
+
